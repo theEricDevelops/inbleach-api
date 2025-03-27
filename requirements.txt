@@ -1,3 +1,11 @@
 fastapi[all]
 uvicorn
 httpx
+requests
+
+bs4
+
+google-auth-oauthlib
+google-api-python-client
+google-auth-httplib2
+python-jose[cryptography]
