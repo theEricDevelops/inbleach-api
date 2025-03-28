@@ -1,5 +1,6 @@
 # /app/utils/gmail.py
 
+import re
 from app.services.gmail import GmailService
 from datetime import date, timedelta
 import base64
@@ -39,6 +40,21 @@ class GmailUtils:
             if not page_token:
                 break
         return messages
+    
+    def _find_url(input: str) -> str:
+        """Finds the first URL in a string.
+
+        Args:
+            input: The string to search for URLs in.
+
+        Returns:
+            The first URL found in the string, or None if no URL is found.
+        """
+        match = re.search(r"<(https?://[^>]+)>", input)
+        if match:
+            return match.group(1)
+        else:
+            return None
 
     def _get_html_body(self, message):
         """
@@ -85,34 +101,37 @@ class GmailUtils:
             message_id (str): The ID of the email message to process.
         """
         message = self.service.users().messages().get(userId='me', id=message_id, format='full').execute()
-        subject = next((h['value'] for h in message['payload']['headers'] if h['name'].lower() == 'subject'), 'No Subject')
-        print(f"Processing email: {subject}")
+        labels = message['labelIds']
+        if 'CATEGORY_PROMOTIONS' in labels:
+            subject = next((h['value'] for h in message['payload']['headers'] if h['name'].lower() == 'subject'), 'No Subject')
+            unsubscribe_header = next((h['value'] for h in message['payload']['headers'] if h['name'].lower() == 'list-unsubscribe'), None)
+            print(f"Processing email: {subject}")
+            
+            unsubscribe_url = re.findall(r'<(https?://[^>]+)>', unsubscribe_header) or [None]
+            unsubscribe_url = unsubscribe_url[0]
+            
+            print(f"Found unsubscribe link: {unsubscribe_url}")
 
-        # Extract HTML content
-        html = self._get_html_body(message)
-        if html:
-            # Parse HTML to find unsubscribe links
-            soup = BeautifulSoup(html, 'html.parser')
-            for a_tag in soup.find_all('a'):
-                href = a_tag.get('href', '')
-                text = a_tag.text.strip()
-                # Check for unsubscribe link in href or link text
-                if (('unsubscribe' in href.lower() or 'unsubscribe' in text.lower()) and 
-                    href.startswith(('http://', 'https://'))):
-                    unsubscribe_url = href
-                    print(f"Found unsubscribe link: {unsubscribe_url}")
-                    try:
-                        # Attempt to unsubscribe by visiting the link
-                        response = requests.get(unsubscribe_url, timeout=10)
-                        if response.status_code == 200:
-                            print(f"Successfully unsubscribed from {unsubscribe_url}")
-                        else:
-                            print(f"Failed to unsubscribe from {unsubscribe_url} - Status code: {response.status_code}")
-                    except requests.RequestException as e:
-                        print(f"Error unsubscribing from {unsubscribe_url}: {e}")
-                    break  # Unsubscribe only once per email
-        else:
-            print("No HTML content found in this email.")
+            if not unsubscribe_url:
+                print("No unsubscribe link found.")
+                return False
+            
+            print(f"Found unsubscribe link: {unsubscribe_url}")
+            try:
+                # Attempt to unsubscribe by visiting the link
+                response = requests.get(
+                    unsubscribe_url, 
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3' 
+                    },
+                    timeout=10, 
+                    allow_redirects=True)
+                response.raise_for_status()
+                print(f"Successfully unsubscribed from {unsubscribe_url}")
+                return True
+            except requests.RequestException as e:
+                print(f"Error unsubscribing from {unsubscribe_url}: {e}")
+        return False
 
     def unsubscribe_from_marketing_emails(self, days=30):
         """

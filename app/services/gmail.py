@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from app.config import CREDENTIALS_DIR, CREDENTIALS_FILE, TOKEN_FILE
 
 class GmailService:
-    def __init__(self, credentials_file=CREDENTIALS_FILE):
+    def __init__(self, credentials_file=CREDENTIALS_FILE, ):
         """
         Initialize the GmailService class with paths to credentials and token files.
 
@@ -48,7 +48,8 @@ class GmailService:
             Credentials: The user's OAuth2 credentials.
         """
         self.flow.fetch_token(code=code)
-        return self.flow.credentials
+        credentials = self.flow.credentials
+        return credentials
     
     def get_service(self, creds):
         """
